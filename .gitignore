@@ -1,0 +1,33 @@
+# ----------------------------------------------------------------------
+# Mini-Redis Engine: Git Exclusion Rules
+# ----------------------------------------------------------------------
+
+# 1. SECURITY & CREDENTIALS (ABSOLUTE PRIORITY)
+# A compromised key is the death of the server. 
+*.pem
+redis_key.pem
+.env
+
+# 2. C++ COMPILED EXECUTABLES & OBJECT FILES
+# We only track source code. Let the container compile the metal.
+mini_redis
+mini_redis.exe
+*.o
+*.obj
+*.out
+
+# 3. PYTHON CACHE & VIRTUAL ENVIRONMENTS
+# These are generated dynamically and pollute the repository.
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# 4. OS & IDE TRASH
+# Keep the codebase pure from local editor configurations.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
