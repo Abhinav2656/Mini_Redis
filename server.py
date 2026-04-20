@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -72,18 +73,34 @@ HTML_UI = """
             if(!k || !v) return log("ERROR: Key and Value are required for SET operation.");
 
             const start = performance.now();
-            try {
+            const keys = k.split(',');
+            const vals = v.split(',');
+
+            if (keys.length > 1 && keys.length === vals.length) {
+                // BATCH EXECUTION
+                const payload = keys.map((key, i) => ({key: key.trim(), value: vals[i].trim()}));
+                const res = await fetch('/mset', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({items: payload})
+                });
+                const data = await res.json();
+                const netTime = (performance.now() - start).toFixed(2);
+                const coreMs = (data.total_engine_us / 1000).toFixed(4);
+                
+                log(`MSET [${data.keys_processed} Keys] <span class="latency">(Net: ${netTime}ms | Core: ${coreMs}ms)</span>`);
+            } else {
+                // SINGLE EXECUTION
                 const res = await fetch('/set', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({key: k, value: v})
                 });
-                const time = (performance.now() - start).toFixed(2);
-
-                if(res.ok) log(`SET [${k}] = ${v} <span class="latency">(${time}ms)</span>`);
-                else log(`ERROR: Engine rejected SET command <span class="latency">(${time}ms)</span>`);
-            } catch (err) {
-                log(`FATAL: Bridge disconnected.`);
+                const data = await res.json();
+                const netTime = (performance.now() - start).toFixed(2);
+                const coreMs = (data.engine_us / 1000).toFixed(4);
+                
+                log(`SET [${k}] = ${v} <span class="latency">(Net: ${netTime}ms | Core: ${coreMs}ms)</span>`);
             }
         }
 
@@ -92,21 +109,12 @@ HTML_UI = """
             if(!k) return log("ERROR: Key is required for GET operation.");
 
             const start = performance.now();
-            try {
-                const res = await fetch('/get/' + k);
-                const time = (performance.now() - start).toFixed(2);
-
-                if(res.ok) {
-                    const data = await res.json();
-                    log(`GET [${k}] -> ${data.value} <span class="latency">(${time}ms)</span>`);
-                } else if(res.status === 404) {
-                    log(`GET [${k}] -> NULL <span class="latency">(${time}ms)</span>`);
-                } else {
-                    log(`ERROR: Core logic failure <span class="latency">(${time}ms)</span>`);
-                }
-            } catch (err) {
-                log(`FATAL: Bridge disconnected.`);
-            }
+            const res = await fetch('/get/' + k);
+            const data = await res.json();
+            const netTime = (performance.now() - start).toFixed(2);
+            const coreMs = (data.engine_us / 1000).toFixed(4);
+            
+            log(`GET [${k}] -> ${data.value} <span class="latency">(Net: ${netTime}ms | Core: ${coreMs}ms)</span>`);
         }
     </script>
 </body>
@@ -121,39 +129,50 @@ class SetCommand(BaseModel):
     key: str
     value: str
 
+class BatchSetRequest(BaseModel):
+    items: List[SetCommand]
+
+# -- YOUR EXISTING SET ROUTE --
 @app.post("/set")
 def set_value(item: dict):
     key = item.get("key")
     value = item.get("value")
-    
-    print(f"[BRIDGE] Writing SET command for {key}...", flush=True)
-    command = f"SET {key} {value}\n"
-    
-    # THE TRANSLATION STRIKE: Encode to raw bytes
-    engine.stdin.write(command.encode('utf-8'))
+    engine.stdin.write(f"SET {key} {value}\n".encode('utf-8'))
     engine.stdin.flush()
-    print(f"[BRIDGE] SET command flushed. Waiting for C++...", flush=True)
     
-    # THE RECEPTION STRIKE: Decode back to Python string
-    response = engine.stdout.readline().decode('utf-8').strip()
-    print(f"[BRIDGE] C++ Responded to SET: {response}", flush=True)
+    # Python reads "OK|15" and splits it
+    raw_response = engine.stdout.readline().decode('utf-8').strip()
+    parts = raw_response.split('|')
     
-    return {"status": response}
+    return {"status": parts[0], "engine_us": parts[1] if len(parts) > 1 else "0"}
 
+# -- THE NEW BATCH ROUTE --
+@app.post("/mset")
+def mset_values(batch: BatchSetRequest):
+    total_engine_us = 0
+    
+    for item in batch.items:
+        engine.stdin.write(f"SET {item.key} {item.value}\n".encode('utf-8'))
+        engine.stdin.flush()
+        raw_response = engine.stdout.readline().decode('utf-8').strip()
+        parts = raw_response.split('|')
+        if len(parts) > 1:
+            total_engine_us += int(parts[1])
+            
+    return {"status": "BATCH_OK", "keys_processed": len(batch.items), "total_engine_us": total_engine_us}
+
+# -- YOUR EXISTING GET ROUTE --
 @app.get("/get/{key}")
 def get_value(key: str):
-    print(f"[BRIDGE] Writing GET command for {key}...", flush=True)
-    command = f"GET {key}\n"
-    
-    # THE TRANSLATION STRIKE
-    engine.stdin.write(command.encode('utf-8'))
+    engine.stdin.write(f"GET {key}\n".encode('utf-8'))
     engine.stdin.flush()
-    print(f"[BRIDGE] GET command flushed. Waiting for C++...", flush=True)
     
-    # THE RECEPTION STRIKE
-    response = engine.stdout.readline().decode('utf-8').strip()
-    print(f"[BRIDGE] C++ Responded to GET: {response}", flush=True)
+    raw_response = engine.stdout.readline().decode('utf-8').strip()
+    parts = raw_response.split('|')
+    value = parts[0]
+    engine_us = parts[1] if len(parts) > 1 else "0"
     
-    if response == "NULL":
-        raise HTTPException(status_code=404, detail="Not Found")
-    return {"value": response}
+    if value == "NULL":
+        return {"value": "NULL", "engine_us": engine_us} # Don't throw 404, just return NULL so UI can show it
+    return {"value": value, "engine_us": engine_us}
+

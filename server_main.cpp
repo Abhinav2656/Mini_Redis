@@ -4,29 +4,46 @@
 #include<string>
 #include<vector>
 #include<memory> // for smart pointers
+#include<chrono>
 
 int main() {
     //R-E-P-L Engine Read-Eval-Print Loop
-    LRUCache db(100);
+    LRUCache db(1000);
 
     std::string command, key, value;
     while(std::cin >> command){
+        // Start the microsecond clock
+        auto start_time = std::chrono::high_resolution_clock::now();
+
         if(command == "SET"){
             std::cin >> key >> value;
             db.put(key, std::make_unique<StringValue>(value));
-            std::cout << "OK" << std::endl;
+            
+            auto end_time = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+            
+            // Output absolute truth: OK|time
+            std::cout << "OK|" << duration << std::endl;
+            
         } else if (command == "GET") {
             std::cin >> key;
             IValue* res = db.get(key);
+            
+            auto end_time = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+            
             if (res) {
-                std::cout << res->serialize() << std::endl;
+                std::cout << res->serialize() << "|" << duration << std::endl;
             } else {
-                std::cout << "NULL" << std::endl;
+                std::cout << "NULL|" << duration << std::endl;
             }
-        } else if(command == "DEL"){
-            std::cout<< "Unsupported Command !" << std::endl;
-        }else {
-            std::cout << "ERROR_UNKNOWN_COMMAND" << std::endl;
+            
+        // } else if (command == "STATS") {
+        //     // NOTE: You must add a simple get_size() and get_capacity() method to your LRUCache class for this to work
+        //     // If you haven't, just hardcode the capacity for now to prove the concept.
+        //     std::cout << "ARENA_ACTIVE|" << duration << std::endl; 
+        } else {
+            std::cout << "ERROR_UNKNOWN_COMMAND|0" << std::endl;
         }
     }
     return 0;
