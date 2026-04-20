@@ -37,7 +37,7 @@ int main() {
 
 // int main()
 // {
-//     HashMap db(10); // create a hashmap with capacity of 10
+//     HashMap db(10; // create a hashmap with capacity of 10
 //     std::cout<< "Mini Redis ENgine Initialized!" << std::endl;
 
 //     db.put("player", std::make_unique<StringValue>("Abhinav"));//insertion using smart pointer to manage memory

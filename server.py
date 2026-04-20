@@ -19,38 +19,34 @@ class SetCommand(BaseModel):
     key: str
     value: str
 
-@app.get('/get/{key}')
-def get_key(key: str):
-
-    if not engine.stdin or not engine.stdout:
-        raise HTTPException(status_code=500, detail="IPC Bridge Collapsed")
-
-    command = f"GET {key}\n".encode('utf-8')
-
+@app.post("/set")
+def set_value(item: dict):
+    key = item.get("key")
+    value = item.get("value")
+    
+    print(f"[BRIDGE] Writing SET command for {key}...", flush=True)
+    command = f"SET {key} {value}\n"
     engine.stdin.write(command)
     engine.stdin.flush()
+    print(f"[BRIDGE] SET command flushed. Waiting for C++...", flush=True)
+    
+    response = engine.stdout.readline().strip()
+    print(f"[BRIDGE] C++ Responded to SET: {response}", flush=True)
+    
+    return {"status": response}
 
-    result = engine.stdout.readline().decode('utf-8').strip()
-    if result == "NULL":
-        raise HTTPException(status_code=404, detail="Key not found")
-    return {"key": key, "value": result}
-
-
-@app.post("/set")
-def set_key(cmd : SetCommand):
-
-    if not engine.stdin or not engine.stdout:
-        raise HTTPException(status_code=500, detail="IPC Bridge Collapsed")
-
-    command = f"SET {cmd.key} {cmd.value}\n".encode('utf=8')
-
+@app.get("/get/{key}")
+def get_value(key: str):
+    print(f"[BRIDGE] Writing GET command for {key}...", flush=True)
+    command = f"GET {key}\n"
     engine.stdin.write(command)
-    engine.stdout.flush()
-
-    result = engine.stdout.readline().decode('utf-8').strip()
-    if result == "OK":
-        return {"status": "success", "key": cmd.key}
-    else:
-        raise HTTPException(status_code=500, detail="Engine failed to execute")
-
+    engine.stdin.flush()
+    print(f"[BRIDGE] GET command flushed. Waiting for C++...", flush=True)
+    
+    response = engine.stdout.readline().strip()
+    print(f"[BRIDGE] C++ Responded to GET: {response}", flush=True)
+    
+    if response == "NULL":
+        raise HTTPException(status_code=404, detail="Not Found")
+    return {"value": response}
     
