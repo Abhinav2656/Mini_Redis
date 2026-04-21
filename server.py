@@ -106,7 +106,12 @@ HTML_UI = """
 
         async function executeGet() {
             const k = keyIn.value.trim();
-            if(!k) return log("ERROR: Key is required for GET operation.");
+            if(!k) return log("ERROR: Key is required.");
+            
+            // THE SHIELD: Prevent poisoned inputs
+            if(k.includes(',') || k.includes(' ')) {
+                return log("FATAL: GET only accepts a single, solid key without spaces.");
+            }
 
             const start = performance.now();
             const res = await fetch('/get/' + k);
