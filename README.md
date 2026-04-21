@@ -438,6 +438,10 @@ curl -X POST http://localhost:8000/mset \
 | DELETE/Eviction | O(1)            | O(1)             | Remove node, erase from map     |
 | **Total**       | **O(1) per op** | **O(capacity)**  | Bounded by cache capacity       |
 
+### Performance Visualization
+
+![Performance Characteristics Diagram](Screenshot%202026-04-21%20211621.png)
+
 ---
 
 ## 📝 License
