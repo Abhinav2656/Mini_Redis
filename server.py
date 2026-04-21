@@ -70,14 +70,26 @@ HTML_UI = """
         async function executeSet() {
             const k = keyIn.value.trim();
             const v = valIn.value.trim();
-            if(!k || !v) return log("ERROR: Key and Value are required for SET operation.");
+            if(!k || !v) return log("ERROR: Key and Value are required.");
 
-            const start = performance.now();
             const keys = k.split(',');
             const vals = v.split(',');
 
-            if (keys.length > 1 && keys.length === vals.length) {
-                // BATCH EXECUTION
+            // --- BATCH ROUTINE ---
+            if (keys.length > 1 || vals.length > 1) {
+                // SHIELD 1: Mismatched Arrays
+                if (keys.length !== vals.length) {
+                    return log("FATAL: Mismatch. Batch SET requires an equal number of comma-separated keys and values.");
+                }
+                
+                // SHIELD 2: Spaces inside Batch Items
+                for (let i = 0; i < keys.length; i++) {
+                    if (keys[i].trim().includes(' ') || vals[i].trim().includes(' ')) {
+                        return log("FATAL: No spaces allowed inside individual keys or values.");
+                    }
+                }
+
+                const start = performance.now();
                 const payload = keys.map((key, i) => ({key: key.trim(), value: vals[i].trim()}));
                 const res = await fetch('/mset', {
                     method: 'POST',
@@ -89,8 +101,15 @@ HTML_UI = """
                 const coreMs = (data.total_engine_us / 1000).toFixed(4);
                 
                 log(`MSET [${data.keys_processed} Keys] <span class="latency">(Net: ${netTime}ms | Core: ${coreMs}ms)</span>`);
+            
+            // --- SINGLE ROUTINE ---
             } else {
-                // SINGLE EXECUTION
+                // SHIELD 3: Spaces in Single Item
+                if (k.includes(' ') || v.includes(' ')) {
+                    return log("FATAL: Single SET requires a solid key and value without spaces.");
+                }
+
+                const start = performance.now();
                 const res = await fetch('/set', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
